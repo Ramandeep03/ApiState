@@ -33,6 +33,7 @@ public extension ApiState {
     ///   when the operation throws.
     static func guardAsync(
         _ operation: () async throws -> Value,
+        previousData: Value? = nil,
         onError: (
             Error,
             [String]
@@ -47,7 +48,8 @@ public extension ApiState {
                 onError(
                     error,
                     Thread.callStackSymbols
-                )
+                ),
+                previousData: previousData
             )
         }
     }

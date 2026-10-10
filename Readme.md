@@ -3,24 +3,27 @@
 
 A lightweight, type-safe state management utility for handling asynchronous operations in Swift.
 
-`ApiState` provides a simple and predictable way to represent API and asynchronous operation states such as **initial**, **loading**, **success**, **failure**, and **refresh**.
+`ApiState` provides a simple and predictable way to represent API and asynchronous operation states such as **initial**, **loading**, **success**, **failure**, **refresh**, and **load more**.
 
 It is designed to work naturally with SwiftUI, MVVM, repositories, services, and other Swift architectures without introducing external dependencies.
 
 ## Features
 
-- Five predictable states
+- Six predictable states
   - `initial`
   - `loading`
   - `success`
   - `failure`
   - `refresh`
+  - `loadMore`
 - Type-safe generic data
 - Structured failure handling
 - Built-in common failure types
 - Pattern matching helpers
 - Data and failure transformations
 - Refresh state with existing data preservation
+- Load-more state with existing data preservation
+- Failure states can retain previously loaded data
 - Async operation guard
 - Swift Concurrency support
 - `Sendable` support
@@ -112,6 +115,15 @@ let state: ApiState<User> = .failure(
 )
 ```
 
+Keep data from an earlier successful request when a later request fails:
+
+```swift
+let state: ApiState<User> = .failure(
+    NetworkFailure(),
+    previousData: user
+)
+```
+
 ### Refresh
 
 Represents existing data that is currently being refreshed.
@@ -120,6 +132,14 @@ Unlike `loading`, the `refresh` state keeps the previously loaded data available
 
 ```swift
 let state: ApiState<User> = .refresh(user)
+```
+
+### Load More
+
+Represents a pagination request while keeping the current data available.
+
+```swift
+let state: ApiState<[User]> = .loadMore(existingUsers)
 ```
 
 ## Convenience Properties
@@ -132,6 +152,7 @@ state.isLoading
 state.isSuccess
 state.isFailure
 state.isRefresh
+state.isLoadMore
 ```
 
 Check whether data or an error is available:
@@ -157,7 +178,8 @@ if let failure = state.error {
 }
 ```
 
-`data` is available for both `success` and `refresh`.
+`data` is available for `success`, `refresh`, `loadMore`, and a `failure`
+that retains prior data.
 
 ## Pattern Matching
 
@@ -178,13 +200,16 @@ let message = state.when(
     },
     refresh: { user in
         "Refreshing \(user.name)"
+    },
+    loadMore: { user in
+        "Loading more for \(user.name)"
     }
 )
 ```
 
-The `refresh` handler is optional.
-
-When it is not provided, refresh data is passed to the `success` handler.
+The `refresh` and `loadMore` handlers are optional. If either is omitted,
+its data is passed to the `success` handler. Use `failureWithData` to handle
+a failure and its optional retained data together.
 
 ```swift
 state.when(
@@ -211,6 +236,17 @@ state.whenOrNull(
     },
     failure: { failure in
         print(failure.message)
+    }
+)
+```
+
+Handle pagination and failures with retained data explicitly:
+
+```swift
+state.whenOrNull(
+    loadMore: { users in print("Loading after \(users.count) users") },
+    failureWithData: { failure, users in
+        print("\(failure.message); cached count: \(users?.count ?? 0)")
     }
 )
 ```
@@ -245,7 +281,8 @@ state.whenData { user in
 }
 ```
 
-`whenData` works with both `success` and `refresh`.
+`whenData` works with every state that contains data, including `loadMore`
+and failures that retain prior data.
 
 It can also return a transformed value.
 
@@ -257,7 +294,8 @@ let name = state.whenData { user in
 
 ## Transforming Data
 
-Use `map` to transform the value contained by `success` or `refresh`.
+Use `map` to transform data held by `success`, `refresh`, `loadMore`, or a
+failure with retained data.
 
 ```swift
 let userState: ApiState<User> = .success(user)
@@ -274,6 +312,8 @@ For example:
 ```text
 success(User) → success(String)
 refresh(User) → refresh(String)
+loadMore(User) → loadMore(String)
+failure(error, User) → failure(error, String)
 loading       → loading
 failure       → failure
 initial       → initial
@@ -321,6 +361,26 @@ refresh(data) → refresh(data)
 initial       → loading
 loading       → loading
 failure       → loading
+failure(error, data) → refresh(data)
+```
+
+### toLoadMore
+
+Convert a state containing data into a load-more state while retaining that
+data. States without data become `.loading`.
+
+```swift
+state = state.toLoadMore()
+```
+
+```text
+success(data)          → loadMore(data)
+refresh(data)          → loadMore(data)
+loadMore(data)         → loadMore(data)
+failure(error, data)   → loadMore(data)
+initial                → loading
+loading                → loading
+failure(error)         → loading
 ```
 
 ## Async Guard
@@ -332,6 +392,7 @@ let state = await ApiState<User>.guardAsync(
     {
         try await repository.fetchUser()
     },
+    previousData: currentState.data,
     onError: { error, stackTrace in
         ServerFailure(
             error.localizedDescription,
@@ -354,6 +415,7 @@ A thrown error becomes:
 ```
 
 The error mapper receives the original `Error` and the captured stack trace.
+Pass `previousData` to retain the displayed value if the operation fails.
 
 ## Failures
 
@@ -540,8 +602,11 @@ struct UserView: View {
         case .refresh(let user):
             UserContentView(user: user)
 
-        case .failure(let failure):
+        case .failure(let failure, _):
             Text(failure.message)
+
+        case .loadMore(let users):
+            UserContentView(user: users)
         }
     }
 }
@@ -574,6 +639,7 @@ initial
 loading
    ↓
 success ───→ refresh
+success ───→ loadMore
    ↓
 failure
 ```

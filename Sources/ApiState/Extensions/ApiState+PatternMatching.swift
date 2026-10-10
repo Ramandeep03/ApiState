@@ -5,20 +5,25 @@ public extension ApiState {
     ///
     /// Initial and loading states share the `initialOrLoading` handler.
     ///
-    /// If no `refresh` handler is supplied, refresh values are passed
-    /// to the `success` handler.
+    /// If no `refresh` or `loadMore` handler is supplied, the associated
+    /// value is passed to the `success` handler. `failureWithData` can handle
+    /// failures together with any retained prior data.
     ///
     /// - Parameters:
     ///   - initialOrLoading: Called for `.initial` and `.loading`.
     ///   - success: Called when the operation succeeds.
     ///   - failure: Called when the operation fails.
     ///   - refresh: Optionally called while existing data is refreshing.
+    ///   - loadMore: Optionally called while another page is loading.
+    ///   - failureWithData: Optionally called with a failure and retained data.
     /// - Returns: The result produced by the matching handler.
     func when<Result>(
         initialOrLoading: () -> Result,
         success: (Value) -> Result,
         failure: (any Failure) -> Result,
-        refresh: ((Value) -> Result)? = nil
+        refresh: ((Value) -> Result)? = nil,
+        loadMore: ((Value) -> Result)? = nil,
+        failureWithData: ((any Failure, Value?) -> Result)? = nil
     ) -> Result {
         switch self {
         case .initial, .loading:
@@ -27,11 +32,14 @@ public extension ApiState {
         case .success(let value):
             return success(value)
 
-        case .failure(let apiFailure):
-            return failure(apiFailure)
+        case .failure(let apiFailure, let previousData):
+            return failureWithData?(apiFailure, previousData) ?? failure(apiFailure)
 
         case .refresh(let value):
             return refresh?(value) ?? success(value)
+
+        case .loadMore(let value):
+            return loadMore?(value) ?? success(value)
         }
     }
 
@@ -45,7 +53,9 @@ public extension ApiState {
         initialOrLoading: (() -> Result)? = nil,
         success: ((Value) -> Result)? = nil,
         failure: ((any Failure) -> Result)? = nil,
-        refresh: ((Value) -> Result)? = nil
+        refresh: ((Value) -> Result)? = nil,
+        loadMore: ((Value) -> Result)? = nil,
+        failureWithData: ((any Failure, Value?) -> Result)? = nil
     ) -> Result? {
         switch self {
         case .initial, .loading:
@@ -54,11 +64,14 @@ public extension ApiState {
         case .success(let value):
             return success?(value)
 
-        case .failure(let apiFailure):
-            return failure?(apiFailure)
+        case .failure(let apiFailure, let previousData):
+            return failureWithData?(apiFailure, previousData) ?? failure?(apiFailure)
 
         case .refresh(let value):
             return refresh?(value)
+
+        case .loadMore(let value):
+            return loadMore?(value)
         }
     }
 
@@ -79,6 +92,8 @@ public extension ApiState {
         success: ((Value) -> Result)? = nil,
         failure: ((any Failure) -> Result)? = nil,
         refresh: ((Value) -> Result)? = nil,
+        loadMore: ((Value) -> Result)? = nil,
+        failureWithData: ((any Failure, Value?) -> Result)? = nil,
         orElse: () -> Result
     ) -> Result {
         switch self {
@@ -88,17 +103,22 @@ public extension ApiState {
         case .success(let value):
             return success?(value) ?? orElse()
 
-        case .failure(let apiFailure):
-            return failure?(apiFailure) ?? orElse()
+        case .failure(let apiFailure, let previousData):
+            return failureWithData?(apiFailure, previousData)
+                ?? failure?(apiFailure)
+                ?? orElse()
 
         case .refresh(let value):
             return refresh?(value) ?? orElse()
+
+        case .loadMore(let value):
+            return loadMore?(value) ?? orElse()
         }
     }
 
     /// Executes an action when the state contains data.
     ///
-    /// The action is executed for both `.success` and `.refresh`.
+    /// The action is executed for all states that contain data.
     ///
     /// - Parameter action: The operation to perform with the value.
     /// - Returns: The result of `action`, or `nil` when no data exists.
@@ -107,8 +127,12 @@ public extension ApiState {
     ) -> Result? {
         switch self {
         case .success(let value),
-             .refresh(let value):
+             .refresh(let value),
+             .loadMore(let value):
             return action(value)
+
+        case .failure(_, let previousData?):
+            return action(previousData)
 
         default:
             return nil

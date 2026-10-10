@@ -1,7 +1,8 @@
 /// Transformation utilities for `ApiState`.
 public extension ApiState {
 
-    /// Transforms the value contained by `.success` or `.refresh`.
+    /// Transforms data contained by `.success`, `.refresh`, `.loadMore`,
+    /// or a `.failure` with retained prior data.
     ///
     /// Other states are preserved without modification.
     ///
@@ -22,11 +23,16 @@ public extension ApiState {
                 try transform(value)
             )
 
-        case .failure(let failure):
-            return .failure(failure)
+        case .failure(let failure, let previousData):
+            return .failure(failure, previousData: try previousData.map(transform))
 
         case .refresh(let value):
             return .refresh(
+                try transform(value)
+            )
+
+        case .loadMore(let value):
+            return .loadMore(
                 try transform(value)
             )
         }
@@ -42,9 +48,10 @@ public extension ApiState {
         _ transform: (any Failure) -> any Failure
     ) -> ApiState<Value> {
         switch self {
-        case .failure(let failure):
+        case .failure(let failure, let previousData):
             return .failure(
-                transform(failure)
+                transform(failure),
+                previousData: previousData
             )
 
         default:

@@ -1,7 +1,7 @@
 /// Represents the state of an asynchronous operation.
 ///
 /// `ApiState` provides a consistent way to represent loading,
-/// success, failure, and refresh states throughout an application.
+/// success, failure, refresh, and load-more states throughout an application.
 public enum ApiState<Value> {
     /// The operation has not started yet.
     case initial
@@ -13,10 +13,13 @@ public enum ApiState<Value> {
     case success(Value)
 
     /// The operation failed.
-    case failure(any Failure)
+    case failure(any Failure, previousData: Value? = nil)
 
     /// Existing data is currently being refreshed.
     case refresh(Value)
+
+    /// Existing data is currently being extended with another page.
+    case loadMore(Value)
 }
 
 /// Makes `ApiState` safe to pass across Swift concurrency boundaries

@@ -46,13 +46,25 @@ public extension ApiState {
         return false
     }
 
+    /// Returns `true` when the state is `.loadMore`.
+    var isLoadMore: Bool {
+        if case .loadMore = self {
+            return true
+        }
+
+        return false
+    }
+
     /// Returns `true` when the state contains data.
     ///
-    /// Both `.success` and `.refresh` contain data.
+    /// Success, refresh, load-more, and failures retaining prior data contain data.
     var hasData: Bool {
         switch self {
-        case .success, .refresh:
+        case .success, .refresh, .loadMore:
             return true
+
+        case .failure(_, let previousData):
+            return previousData != nil
 
         default:
             return false
@@ -68,15 +80,19 @@ public extension ApiState {
         return false
     }
 
-    /// Returns the associated value when the state is `.success`
-    /// or `.refresh`.
+    /// Returns data held by `.success`, `.refresh`, `.loadMore`, or a
+    /// `.failure` with retained prior data.
     ///
     /// Returns `nil` for all other states.
     var data: Value? {
         switch self {
         case .success(let value),
-             .refresh(let value):
+             .refresh(let value),
+             .loadMore(let value):
             return value
+
+        case .failure(_, let previousData):
+            return previousData
 
         default:
             return nil
@@ -87,7 +103,7 @@ public extension ApiState {
     ///
     /// Returns `nil` for all other states.
     var error: (any Failure)? {
-        if case .failure(let failure) = self {
+        if case .failure(let failure, _) = self {
             return failure
         }
 

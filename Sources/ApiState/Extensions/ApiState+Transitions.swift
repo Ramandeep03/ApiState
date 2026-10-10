@@ -19,8 +19,32 @@ public extension ApiState {
     func toRefresh() -> ApiState<Value> {
         switch self {
         case .success(let value),
-             .refresh(let value):
+             .refresh(let value),
+             .loadMore(let value):
             return .refresh(value)
+
+        case .failure(_, let previousData?):
+            return .refresh(previousData)
+
+        default:
+            return .loading
+        }
+    }
+
+    /// Converts the current state to a load-more state when data exists.
+    ///
+    /// States without data become `.loading`.
+    ///
+    /// - Returns: A load-more state when data exists, otherwise `.loading`.
+    func toLoadMore() -> ApiState<Value> {
+        switch self {
+        case .success(let value),
+             .refresh(let value),
+             .loadMore(let value):
+            return .loadMore(value)
+
+        case .failure(_, let previousData?):
+            return .loadMore(previousData)
 
         default:
             return .loading
